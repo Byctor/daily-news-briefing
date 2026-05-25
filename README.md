@@ -76,6 +76,39 @@ pip install -r ~/.claude/skills/daily-news-briefing/requirements.txt
 
 依赖：`Pillow` `requests` `beautifulsoup4`，Python 3.9+。
 
+## 前置条件与新闻源
+
+### 开箱即用（内置 HTTP 抓取，无需 Agent 具备联网工具）
+
+Skill 自带 `requests` + `BeautifulSoup` 抓取器，Agent 无需 web-search API key 或 CDP 浏览器即可获取以下来源：
+
+| 来源 | 方式 | 类型 |
+|------|------|------|
+| GitHub Trending | 网页抓取 | 开发 |
+| TechCrunch | RSS 订阅 | 英文科技 |
+| The Verge | RSS 订阅 | 英文科技 |
+| Hacker News | Firebase API | 英文科技 |
+| 36氪 | 网页抓取（meta description） | 中文科技 |
+| 新华社 | 文章页抓取 | 国内新闻 |
+| 人民网 | 文章页抓取（GB2312） | 国内新闻 |
+
+### 扩展更多来源（需 Agent 具备 web-search / CDP 浏览器能力）
+
+部分中文站点（虎嗅、机器之心等）使用 WAF 验证码或 JS 动态渲染，无法通过纯 HTTP 抓取。如需包含这些来源，可利用 Agent 的联网工具预先采集，写入 `output/data/news_input.json`：
+
+```json
+{
+  "ai_news": [
+    {"title": "...", "description": "...", "url": "..."}
+  ],
+  "domestic_news": [
+    {"title": "...", "description": "...", "url": "..."}
+  ]
+}
+```
+
+然后运行 `python scripts/generate.py`——Skill 会优先读取此文件，不足部分再用内置抓取器补采。详见 [SKILL.md](SKILL.md#extending-news-sources)。
+
 ## 使用
 
 安装后在对话中告诉 Agent：
@@ -204,6 +237,12 @@ Install the daily-news-briefing skill: https://github.com/byctor/daily-news-brie
 git clone https://github.com/byctor/daily-news-briefing.git ~/.claude/skills/daily-news-briefing
 pip install -r ~/.claude/skills/daily-news-briefing/requirements.txt
 ```
+
+### Prerequisites & News Sources
+
+**Out of the box** — built-in HTTP scrapers work without Agent-side web tools (no API key or CDP browser needed): GitHub Trending, TechCrunch, The Verge, Hacker News, 36kr, Xinhuanet, People's Daily.
+
+**Extending** — for sites blocked by WAF or JS rendering (e.g. huxiu), pre-fill `output/data/news_input.json` using your Agent's web-search or CDP browser, then run `python scripts/generate.py`. The skill reads this file first and only supplements what's missing. See [SKILL.md](SKILL.md#extending-news-sources).
 
 ### Capabilities
 

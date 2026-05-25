@@ -73,9 +73,6 @@ AI_NEWS = {
     "display_count": 10,
     "sources": [
         {"name": "36氪",    "url": "https://36kr.com"},
-        {"name": "虎嗅",    "url": "https://huxiu.com"},
-        {"name": "机器之心", "url": "https://jiqizhixin.com"},
-        {"name": "量子位",   "url": "https://liangziwei.com"},
         {"name": "Hacker News",  "url": "https://news.ycombinator.com"},
         {"name": "TechCrunch",   "url": "https://techcrunch.com"},
         {"name": "The Verge",    "url": "https://theverge.com"},
@@ -91,7 +88,6 @@ DOMESTIC_NEWS = {
     "sources": [
         {"name": "新华社",   "url": "https://xinhuanet.com"},
         {"name": "人民日报", "url": "https://people.cn"},
-        {"name": "央视新闻", "url": "https://news.cctv.com"},
     ],
 }
 

@@ -51,6 +51,51 @@ Edit `config/settings.py` to customize behavior. Key sections:
 
 For a minimal starting config, see `assets/config.template.py`.
 
+## Extending News Sources
+
+### Built-in (no Agent tools required)
+
+The skill includes HTTP-based scrapers that work without any Agent-side web capabilities:
+
+| Source | Method | Language |
+|--------|--------|----------|
+| GitHub Trending | `requests` + BeautifulSoup | EN → CN (MyMemory) |
+| TechCrunch | RSS feed via `xml.etree` | EN |
+| The Verge | RSS feed via `xml.etree` | EN |
+| Hacker News | Firebase REST API | EN |
+| 36kr | Article page scraping (meta description) | CN |
+| Xinhuanet | Article page scraping | CN |
+| People's Daily | Article page scraping (GB2312) | CN |
+
+These work out of the box after `pip install -r requirements.txt` — the Agent needs no web-search API key or CDP browser.
+
+### Agent-side pre-fill (for blocked sources)
+
+Some Chinese tech sites use WAF/CAPTCHA or JS rendering and cannot be scraped with plain HTTP. To include them:
+
+1. Use your Agent's web-search / CDP browser capability to collect articles
+2. Write results to `output/data/news_input.json` in this format:
+```json
+{
+  "github_trending": [],
+  "ai_news": [
+    {"title": "...", "description": "...", "url": "..."}
+  ],
+  "domestic_news": [
+    {"title": "...", "description": "...", "url": "..."}
+  ]
+}
+```
+3. Run `python scripts/generate.py` — it reads this file first and only supplements what's missing
+
+Example prompt for your Agent:
+```
+Collect today's top 5 AI news from huxiu.com, then save to
+output/data/news_input.json and run python scripts/generate.py
+```
+
+This two-path design keeps the skill self-contained for the common case, while allowing richer sources when the Agent has advanced networking tools.
+
 ## Architecture
 
 ```

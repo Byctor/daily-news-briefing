@@ -270,104 +270,63 @@ def _scrape_rss_feeds(count: int) -> list:
 
 
 def _scrape_cn_tech(count: int) -> list:
-    """Best-effort scrape of Chinese tech news sites with descriptions.
-    Note: Some Chinese sites (huxiu, etc.) use WAF/CAPTCHA and cannot be scraped
-    with plain HTTP requests. These sources are skipped gracefully."""
+    """Scrape Chinese tech news sites with descriptions.
+
+    Only sources that work with plain HTTP requests are included.
+    Sites requiring JS rendering or blocked by WAF are excluded —
+    use news_input.json pre-fill or Agent-side tools for those.
+    """
     items = []
     headers = {
         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
         "Accept": "text/html,application/xhtml+xml",
     }
-    from bs4 import BeautifulSoup
-
-    # 机器之心: article listing page
-    try:
-        resp = requests.get("https://www.jiqizhixin.com/articles", headers=headers, timeout=10)
-        resp.raise_for_status()
-        soup = BeautifulSoup(resp.text, "html.parser")
-        seen = set()
-        for card in soup.select("article, .article-item, .post-item, [class*='article']"):
-            title_el = card.find(["h2", "h3", "h4"]) or card.find("a", href=lambda h: h and "/articles/" in h)
-            desc_el = card.find("p") or card.find(["div", "span"], class_=lambda c: c and any(
-                w in (c or "") for w in ["desc", "excerpt", "summary", "intro"]
-            ))
-            if title_el:
-                title = title_el.get_text(strip=True)
-                href = title_el.get("href", "")
-                if not href:
-                    link = card.find("a", href=True)
-                    href = link.get("href", "") if link else ""
-                if title and len(title) > 6 and title not in seen:
-                    seen.add(title)
-                    desc = desc_el.get_text(strip=True) if desc_el else ""
-                    url = href if href.startswith("http") else "https://www.jiqizhixin.com" + href
-                    items.append({"title": title, "description": desc[:200], "url": url})
-        if not items:
-            for a in soup.select("a[href*='/articles/']"):
-                title = a.get_text(strip=True)
-                href = a.get("href", "")
-                if title and len(title) > 6 and title not in seen:
-                    seen.add(title)
-                    url = "https://www.jiqizhixin.com" + href if href.startswith("/") else href
-                    parent = a.find_parent(["div", "li", "article"])
-                    desc = ""
-                    if parent:
-                        p = parent.find("p")
-                        if p:
-                            desc = p.get_text(strip=True)
-                    items.append({"title": title, "description": desc[:200], "url": url})
-                    if len(items) >= count:
-                        break
-        print(f"      机器之心: {len(items)} items")
-    except Exception as e:
-        print(f"      机器之心: {e}")
 
     # 36kr newsflashes — collect titles then fetch articles for descriptions
-    if len(items) < count:
-        import html as html_mod
-        import re
-        try:
-            resp = requests.get("https://36kr.com/newsflashes", headers=headers, timeout=10)
-            resp.raise_for_status()
-            soup = BeautifulSoup(resp.text, "html.parser")
-            raw_36kr = []
-            seen = set()
-            for a in soup.select("a[href*='/newsflashes/'], a[href*='/p/']"):
-                title = a.get_text(strip=True)
-                href = a.get("href", "")
-                if title and len(title) > 6 and title not in seen:
-                    seen.add(title)
-                    url = "https://36kr.com" + href if href.startswith("/") else href
-                    raw_36kr.append({"title": title, "url": url})
+    from bs4 import BeautifulSoup
+    import html as html_mod
+    import re
+    try:
+        resp = requests.get("https://36kr.com/newsflashes", headers=headers, timeout=10)
+        resp.raise_for_status()
+        soup = BeautifulSoup(resp.text, "html.parser")
+        raw_36kr = []
+        seen = set()
+        for a in soup.select("a[href*='/newsflashes/'], a[href*='/p/']"):
+            title = a.get_text(strip=True)
+            href = a.get("href", "")
+            if title and len(title) > 6 and title not in seen:
+                seen.add(title)
+                url = "https://36kr.com" + href if href.startswith("/") else href
+                raw_36kr.append({"title": title, "url": url})
 
-            # Fetch article pages for descriptions (first N only)
-            start_count = len(items)
-            for item in raw_36kr:
-                if len(items) - start_count >= count:
-                    break
-                desc = ""
-                try:
-                    ar = requests.get(item["url"], headers=headers, timeout=8)
-                    match = re.search(
-                        r'<meta[^>]*name="description"[^>]*content="([^"]+)"',
-                        ar.text[:50000],
-                    )
-                    if match:
-                        raw_desc = html_mod.unescape(match.group(1).strip())
-                        raw_desc = re.sub(r'\s*[-|–—]\s*$', '', raw_desc)
-                        raw_desc = raw_desc.strip()
-                        if raw_desc and len(raw_desc) > len(item["title"]):
-                            desc = raw_desc
-                except Exception:
-                    pass
-                items.append({
-                    "title": item["title"],
-                    "description": desc[:200],
-                    "url": item["url"],
-                })
-            print(f"      36kr: {len(items) - start_count} items")
-        except Exception as e:
-            print(f"      36kr: {e}")
+        # Fetch article pages for descriptions (first N only)
+        for item in raw_36kr:
+            if len(items) >= count:
+                break
+            desc = ""
+            try:
+                ar = requests.get(item["url"], headers=headers, timeout=8)
+                match = re.search(
+                    r'<meta[^>]*name="description"[^>]*content="([^"]+)"',
+                    ar.text[:50000],
+                )
+                if match:
+                    raw_desc = html_mod.unescape(match.group(1).strip())
+                    raw_desc = re.sub(r'\s*[-|–—]\s*$', '', raw_desc)
+                    raw_desc = raw_desc.strip()
+                    if raw_desc and len(raw_desc) > len(item["title"]):
+                        desc = raw_desc
+            except Exception:
+                pass
+            items.append({
+                "title": item["title"],
+                "description": desc[:200],
+                "url": item["url"],
+            })
+        print(f"      36kr: {len(items)} items")
+    except Exception as e:
+        print(f"      36kr: {e}")
 
     return items
 
