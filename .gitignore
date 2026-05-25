@@ -1,0 +1,11 @@
+# macOS
+.DS_Store
+
+# Output files (generated daily)
+output/
+!output/.gitkeep
+
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
