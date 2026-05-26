@@ -151,6 +151,61 @@ def _translate_to_cn(text: str) -> str:
     return ""
 
 
+def _llm_translate_batch(texts: list) -> list:
+    """Fallback batch translation via LLM API when MyMemory fails.
+
+    Configure via environment variables:
+      LLM_API_KEY  — required to enable (skip if not set)
+      LLM_API_BASE — optional, defaults to https://api.openai.com/v1
+      LLM_MODEL    — optional, defaults to gpt-4o-mini
+    """
+    api_key = os.environ.get("LLM_API_KEY", "")
+    if not api_key:
+        return [""] * len(texts)
+
+    api_base = os.environ.get("LLM_API_BASE", "https://api.openai.com/v1")
+    model = os.environ.get("LLM_MODEL", "gpt-4o-mini")
+
+    # Build a single prompt with all texts
+    items_text = "\n".join(f"{i+1}. {t}" for i, t in enumerate(texts))
+    system_prompt = (
+        "You are a translator. Translate each English text below to Simplified Chinese. "
+        "Return ONLY a JSON array of strings in the same order, nothing else. "
+        "Keep translations concise and natural."
+    )
+
+    try:
+        resp = requests.post(
+            f"{api_base}/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": items_text},
+                ],
+                "temperature": 0.3,
+            },
+            timeout=60,
+        )
+        data = resp.json()
+        content = data["choices"][0]["message"]["content"].strip()
+        # Try to parse JSON array
+        if content.startswith("[") and content.endswith("]"):
+            translations = json.loads(content)
+            if isinstance(translations, list) and len(translations) == len(texts):
+                print(f"      🤖 LLM translated {len(texts)} descriptions")
+                return translations
+        # Fallback: split by numbered lines
+        print(f"      ⚠️  LLM response not a valid JSON array, skipping")
+    except Exception as e:
+        print(f"      ⚠️  LLM translation failed: {e}")
+    return [""] * len(texts)
+
+
 def fetch_github_trending() -> list:
     """Scrape GitHub Trending page."""
     url = GITHUB_TRENDING["scrape_url"]
@@ -980,6 +1035,19 @@ def main():
     trending = trending[:need_gh]
     ai_news = ai_news[:need_ai]
     domestic_news = domestic_news[:need_dm]
+
+    # ── LLM fallback for failed MyMemory translations ──
+    untranslated = [
+        (i, r) for i, r in enumerate(trending)
+        if r.get("description") and not r.get("description_cn")
+    ]
+    if untranslated:
+        indices, repos = zip(*untranslated)
+        texts = [r["description"] for r in repos]
+        llm_results = _llm_translate_batch(list(texts))
+        for idx, translation in zip(indices, llm_results):
+            if translation:
+                trending[idx]["description_cn"] = translation
 
     print(f"   ✅ AI: {len(ai_news)} items, Domestic: {len(domestic_news)} items, GitHub: {len(trending)} repos")
 
