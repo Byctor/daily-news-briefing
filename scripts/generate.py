@@ -151,59 +151,50 @@ def _translate_to_cn(text: str) -> str:
     return ""
 
 
-def _llm_translate_batch(texts: list) -> list:
-    """Fallback batch translation via LLM API when MyMemory fails.
+def _write_translation_backlog(trending: list) -> bool:
+    """Write untranslated GitHub descriptions to a backlog file for Agent translation.
 
-    Configure via environment variables:
-      LLM_API_KEY  — required to enable (skip if not set)
-      LLM_API_BASE — optional, defaults to https://api.openai.com/v1
-      LLM_MODEL    — optional, defaults to gpt-4o-mini
-    """
-    api_key = os.environ.get("LLM_API_KEY", "")
-    if not api_key:
-        return [""] * len(texts)
+    Returns True if a backlog was written (Agent needs to translate)."""
+    untranslated = [
+        {"index": i, "name": r["name"], "text": r["description"]}
+        for i, r in enumerate(trending)
+        if r.get("description") and not r.get("description_cn")
+    ]
+    if not untranslated:
+        return False
 
-    api_base = os.environ.get("LLM_API_BASE", "https://api.openai.com/v1")
-    model = os.environ.get("LLM_MODEL", "gpt-4o-mini")
-
-    # Build a single prompt with all texts
-    items_text = "\n".join(f"{i+1}. {t}" for i, t in enumerate(texts))
-    system_prompt = (
-        "You are a translator. Translate each English text below to Simplified Chinese. "
-        "Return ONLY a JSON array of strings in the same order, nothing else. "
-        "Keep translations concise and natural."
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    backlog_file = DATA_DIR / "translate_backlog.json"
+    backlog_file.write_text(
+        json.dumps(untranslated, ensure_ascii=False, indent=2),
+        encoding="utf-8"
     )
+    print(f"\n  ⚠️  {len(untranslated)} GitHub descriptions need translation (MyMemory quota exhausted)")
+    print(f"  📝  Backlog written: {backlog_file}")
+    print(f"  🤖  Agent: translate each 'text' field to Chinese and write back as 'cn' field,")
+    print(f"       then re-run generate.py to apply translations.\n")
+    return True
 
+
+def _apply_translation_backlog(trending: list):
+    """Apply Agent-translated descriptions from backlog file if available."""
+    backlog_file = DATA_DIR / "translate_backlog.json"
+    if not backlog_file.exists():
+        return
     try:
-        resp = requests.post(
-            f"{api_base}/chat/completions",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": model,
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": items_text},
-                ],
-                "temperature": 0.3,
-            },
-            timeout=60,
-        )
-        data = resp.json()
-        content = data["choices"][0]["message"]["content"].strip()
-        # Try to parse JSON array
-        if content.startswith("[") and content.endswith("]"):
-            translations = json.loads(content)
-            if isinstance(translations, list) and len(translations) == len(texts):
-                print(f"      🤖 LLM translated {len(texts)} descriptions")
-                return translations
-        # Fallback: split by numbered lines
-        print(f"      ⚠️  LLM response not a valid JSON array, skipping")
-    except Exception as e:
-        print(f"      ⚠️  LLM translation failed: {e}")
-    return [""] * len(texts)
+        backlog = json.loads(backlog_file.read_text(encoding="utf-8"))
+        applied = 0
+        for entry in backlog:
+            idx = entry.get("index")
+            cn = entry.get("cn", "").strip()
+            if idx is not None and cn and idx < len(trending):
+                trending[idx]["description_cn"] = cn
+                applied += 1
+        if applied:
+            print(f"   🤖 Applied {applied} Agent translations from backlog")
+            backlog_file.unlink()  # cleanup after applying
+    except Exception:
+        pass
 
 
 def fetch_github_trending() -> list:
@@ -1036,20 +1027,10 @@ def main():
     ai_news = ai_news[:need_ai]
     domestic_news = domestic_news[:need_dm]
 
-    # ── LLM fallback for failed MyMemory translations ──
-    untranslated = [
-        (i, r) for i, r in enumerate(trending)
-        if r.get("description") and not r.get("description_cn")
-    ]
-    if untranslated:
-        indices, repos = zip(*untranslated)
-        texts = [r["description"] for r in repos]
-        llm_results = _llm_translate_batch(list(texts))
-        for idx, translation in zip(indices, llm_results):
-            if translation:
-                trending[idx]["description_cn"] = translation
-
     print(f"   ✅ AI: {len(ai_news)} items, Domestic: {len(domestic_news)} items, GitHub: {len(trending)} repos")
+
+    # Apply Agent translations from previous run (if any)
+    _apply_translation_backlog(trending)
 
     # If no news, use placeholders for testing
     if not ai_news:
@@ -1071,6 +1052,9 @@ def main():
             encoding="utf-8"
         )
         print(f"   📥 News data saved: {dated_news_file}")
+
+    # ── Write translation backlog if MyMemory failed ──
+    _write_translation_backlog(trending)
 
     # 4. Fetch daily quote
     print("\n💬  Fetching quote...")
