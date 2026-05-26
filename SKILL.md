@@ -96,6 +96,27 @@ output/data/news_input.json and run python scripts/generate.py
 
 This two-path design keeps the skill self-contained for the common case, while allowing richer sources when the Agent has advanced networking tools.
 
+## Translation Fallback
+
+GitHub Trending descriptions are translated from English to Chinese via the free [MyMemory](https://mymemory.translated.net/) API. MyMemory has a daily quota (~500 requests/day), and when exhausted, translations will be empty.
+
+When this happens, `generate.py` writes `output/data/translate_backlog.json`:
+
+```json
+[
+  {"index": 0, "name": "owner/repo", "text": "English description...", "cn": ""}
+]
+```
+
+**The Agent must handle this automatically:**
+
+1. After running `generate.py`, check if `output/data/translate_backlog.json` exists
+2. If it does, read the file, translate each `"text"` field to Simplified Chinese
+3. Write the translation back into the `"cn"` field of each entry
+4. Re-run `python scripts/generate.py` — it will automatically apply the translations and delete the backlog file
+
+This fallback uses the Agent's own LLM capability, requiring no external API key. The backlog file is self-describing: any Agent can understand the format and complete the translation task.
+
 ## Architecture
 
 ```

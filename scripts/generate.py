@@ -169,10 +169,11 @@ def _write_translation_backlog(trending: list) -> bool:
         json.dumps(untranslated, ensure_ascii=False, indent=2),
         encoding="utf-8"
     )
-    print(f"\n  ⚠️  {len(untranslated)} GitHub descriptions need translation (MyMemory quota exhausted)")
-    print(f"  📝  Backlog written: {backlog_file}")
-    print(f"  🤖  Agent: translate each 'text' field to Chinese and write back as 'cn' field,")
-    print(f"       then re-run generate.py to apply translations.\n")
+    print(f"\n  ⚠️  {len(untranslated)} GitHub descriptions untranslated (MyMemory quota exhausted)")
+    print(f"  📝  Translation backlog: {backlog_file}")
+    print(f"  🤖  Action: read backlog -> translate each \"text\" to Simplified Chinese")
+    print(f"       -> write translations as \"cn\" field -> re-run generate.py")
+    print(f"  📖  See SKILL.md §Translation Fallback for details.\n")
     return True
 
 
