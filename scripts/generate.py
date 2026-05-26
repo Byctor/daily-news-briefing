@@ -124,18 +124,30 @@ def fetch_quote() -> tuple:
 
 # ── GitHub Trending ─────────────────────────────────────
 def _translate_to_cn(text: str) -> str:
-    """Translate English text to Chinese via MyMemory free API."""
+    """Translate English text to Chinese via MyMemory free API.
+    Retries on failure (up to 2 attempts) with increasing timeout."""
     if not text or len(text) < 10:
         return ""
-    try:
-        url = "https://api.mymemory.translated.net/get"
-        resp = requests.get(url, params={"q": text[:500], "langpair": "en|zh-CN"}, timeout=8)
-        data = resp.json()
-        translated = data.get("responseData", {}).get("translatedText", "")
-        if translated and translated != text:
-            return translated
-    except Exception:
-        pass
+    url = "https://api.mymemory.translated.net/get"
+    for attempt in range(2):
+        try:
+            timeout = 10 if attempt == 0 else 20
+            resp = requests.get(
+                url,
+                params={"q": text[:500], "langpair": "en|zh-CN"},
+                timeout=timeout,
+            )
+            data = resp.json()
+            translated = data.get("responseData", {}).get("translatedText", "")
+            if translated and translated != text and "MYMEMORY" not in translated:
+                return translated
+            if translated and "MYMEMORY" in translated:
+                print(f"      ⚠️  MyMemory daily quota exhausted, using English description")
+            break  # API responded but gave no translation, don't retry
+        except Exception:
+            if attempt == 1:
+                print(f"      ⚠️  Translation API unreachable (2 attempts)")
+            continue
     return ""
 
 
@@ -545,7 +557,7 @@ def generate_markdown(weather: dict, trending: list, ai_news: list, domestic_new
     for i, repo in enumerate(trending, 1):
         num = f"{i:02d}"
         md += f"### {num}. {repo['name']}\n\n"
-        desc = repo['description'] or "(暂无描述)"
+        desc = repo.get('description_cn') or repo.get('description') or "(暂无描述)"
         lang_tag = f" `{repo['language']}`" if repo['language'] else ""
         stars_tag = f" | {repo['stars_today']}" if repo['stars_today'] else ""
         md += f"{desc}{lang_tag}{stars_tag}\n\n"
@@ -605,7 +617,7 @@ def generate_html(md_content: str, month_day: str, weather: dict, trending: list
     trending_html = ""
     for i, repo in enumerate(trending, 1):
         num = f"{i:02d}"
-        desc = repo['description'] or "(暂无描述)"
+        desc = repo.get('description_cn') or repo.get('description') or "(暂无描述)"
         lang_tag = f' <span class="lang-tag">{repo["language"]}</span>' if repo["language"] else ""
         stars_tag = f' <span class="stars-tag">{repo["stars_today"]}</span>' if repo["stars_today"] else ""
         trending_html += f"""
